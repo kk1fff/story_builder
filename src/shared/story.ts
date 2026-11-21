@@ -8,15 +8,18 @@ export const boxTypes = [
   "question",
   "action",
   "decision",
+  "context",
 ] as const;
 
 export const connectorPresets = [
   { label: "motivates", reverseLabel: "motivated by" },
+  { label: "informs", reverseLabel: "informed by" },
   { label: "solves", reverseLabel: "solved by" },
   { label: "causes", reverseLabel: "caused by" },
   { label: "supports", reverseLabel: "supported by" },
   { label: "illustrates", reverseLabel: "illustrated by" },
   { label: "grounds", reverseLabel: "grounded in" },
+  { label: "provides context for", reverseLabel: "has context" },
   { label: "raises", reverseLabel: "raised by" },
   { label: "answers", reverseLabel: "answered by" },
   { label: "intended to enable", reverseLabel: "intended outcome of" },

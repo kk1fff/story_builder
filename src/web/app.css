@@ -768,6 +768,7 @@ dialog p, .dialog p { margin-bottom: 10px; }
 .box-type[data-type="question"] { --type-fill: light-dark(#e7edf0, #304046); --type-ink: light-dark(#3c6270, #a1c6d2); }
 .box-type[data-type="action"] { --type-fill: light-dark(#ebf0d9, #343d2a); --type-ink: light-dark(#566221, #c6d692); }
 .box-type[data-type="decision"] { --type-fill: var(--accent-soft); --type-ink: var(--accent); }
+.box-type[data-type="context"] { --type-fill: light-dark(#eeebe5, #393631); --type-ink: light-dark(#57534a, #d8d0c4); }
 
 .board .story-wire {
   stroke: var(--wire);

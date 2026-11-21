@@ -8,6 +8,7 @@ export const boxTypeLabels = {
   question: "Question",
   action: "Action",
   decision: "Decision",
+  context: "Context",
 } as const;
 
 export function boxPath(snapshot: StorySnapshot, boxId: string): Box[] {

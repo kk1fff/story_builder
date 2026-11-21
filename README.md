@@ -43,6 +43,7 @@ A new project opens on an empty canvas. The user can add any kind of box and use
 | Question | Something the story needs to answer. |
 | Action | An outcome someone intends to bring about. |
 | Decision | A choice someone made. |
+| Context | The existing environment, such as available technology, rules, or resources. |
 
 Every box can open to show text, a nested canvas, or both. Each block has one location and a stable ID. Moving a block changes its path and keeps its links and annotations attached.
 
