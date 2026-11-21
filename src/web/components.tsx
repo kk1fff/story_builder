@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react';
+import { useEffect, useId, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import Markdown, { defaultUrlTransform } from 'react-markdown';
 import { boxSizeLimits, boxTypes, connectorPresets, getBoxSize, type Box, type StorySnapshot } from '../shared/story.js';
 
@@ -67,10 +67,18 @@ export function BoxForm({ box, onSave, submitLabel, busy }: {
   const [title, setTitle] = useState(box?.title ?? '');
   const [type, setType] = useState<Box['type']>(box?.type ?? 'event');
   const [body, setBody] = useState(box?.body ?? '');
+  const typeId = useId();
+  const typeDescriptionId = `${typeId}-description`;
   function submit(event: FormEvent) { event.preventDefault(); if (title.trim()) void onSave({ title: title.trim(), type, body }); }
   return <form className="form-stack" onSubmit={submit}>
     <label className="field">Title<input name="title" data-initial-focus required maxLength={200} value={title} onChange={event => setTitle(event.target.value)} /></label>
-    <label className="field">Type<select value={type} onChange={event => setType(event.target.value as Box['type'])}>{boxTypes.map(value => <option key={value} value={value}>{titleCase(value)}</option>)}</select></label>
+    <div className="field">
+      <label htmlFor={typeId}>Type</label>
+      <select id={typeId} aria-describedby={type === 'context' ? typeDescriptionId : undefined} value={type} onChange={event => setType(event.target.value as Box['type'])}>
+        {boxTypes.map(value => <option key={value} value={value}>{titleCase(value)}</option>)}
+      </select>
+      {type === 'context' && <small id={typeDescriptionId}>Describe the conditions already in place.</small>}
+    </div>
     <label className="field">Text<textarea name="body" value={body} onChange={event => setBody(event.target.value)} rows={5} /></label>
     <button className="button-primary" disabled={busy || !title.trim()}>{submitLabel}</button>
   </form>;

@@ -9,6 +9,7 @@ const session = { session_id: identifier };
 const instructions = [
   'Open only the project the human named. Pass its application session ID to every Story Builder tool after start_session.',
   'Read the current canvas and relevant nested boxes. For a review, read the notes and their base revision before proposing a change.',
+  'Use a Context box to describe the existing environment at that point in the story, such as available technology, rules, or resources.',
   'Trace conclusions to the events, constraints, and premises behind them. Connect supporting boxes, and distinguish inferences from the human’s stated reasoning.',
   'When depth or scope is ambiguous, show a small representative breakdown in chat and ask one focused question. Wait for their answer before applying the affected edit.',
   'Submit agreed edits as one batch. Respect the web UI editing policy. On a conflict, show the competing changes in chat and ask how to resolve them.',

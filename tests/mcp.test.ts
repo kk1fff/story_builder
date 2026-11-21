@@ -74,6 +74,39 @@ describe('Streamable HTTP MCP endpoint', () => {
     }
   });
 
+  test('advertises Context and lets an agent create, edit, and read it', async () => {
+    const created = store.createProject({ name: 'GCC context' });
+    const client = new Client({ name: 'story-builder-context', version: '1.0.0' });
+    await client.connect(new StreamableHTTPClientTransport(endpoint));
+    try {
+      const manifest = await fetch(endpoint, { headers: { Accept: 'application/json' } }).then(res => res.json());
+      expect(manifest.instructions).toContain('Use a Context box to describe the existing environment');
+      const { tools } = await client.listTools();
+      const schema = tools.find(tool => tool.name === 'apply_changes')?.inputSchema;
+      expect(JSON.stringify(schema)).toContain('"context"');
+
+      const started = await client.callTool({ name: 'start_session', arguments: { project_id: created.project.id } });
+      expect(started.isError).not.toBe(true);
+      const { session_id } = started.structuredContent as { session_id: string };
+      const title = 'The target Unix system allowed 64 KB of stack';
+      const added = await client.callTool({ name: 'apply_changes', arguments: {
+        session_id, base_revision_id: created.revisionId, request_id: 'add-context',
+        operations: [{ op: 'add_box', box: { id: 'stack', type: 'context', title, parentId: null, body: '', x: 0, y: 0 } }],
+      } });
+      expect(added.isError).not.toBe(true);
+      const body = 'The stack limit constrained which compilers could run.';
+      const edited = await client.callTool({ name: 'apply_changes', arguments: {
+        session_id, base_revision_id: (added.structuredContent as { revisionId: string }).revisionId, request_id: 'edit-context',
+        operations: [{ op: 'update_box', boxId: 'stack', patch: { type: 'context', body } }],
+      } });
+      expect(edited.isError).not.toBe(true);
+      const canvas = await client.callTool({ name: 'read_canvas', arguments: { session_id } });
+      expect(canvas.structuredContent).toMatchObject({ boxes: [{ id: 'stack', type: 'context', title, body }] });
+    } finally {
+      await client.close();
+    }
+  });
+
   test('rejects a foreign browser origin while accepting local setup requests', async () => {
     const response = await fetch(endpoint, { headers: { Origin: 'https://outside.example' } });
     expect(response.status).toBe(403);
