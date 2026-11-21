@@ -95,3 +95,35 @@ test('a drag reports a conflict when another editor moves the box mid-gesture', 
     await page.mouse.up();
   }
 });
+
+test('deleting a connection source clears its in-progress gesture', async ({ page }) => {
+  const path = await project(page, 'Deleted connection source');
+  await addBox(page, 'Source box');
+  await addBox(page, 'Surviving box');
+  const before = await page.request.get(path).then(response => response.json()) as WorkingStory;
+  const source = Object.values(before.snapshot.boxes).find(box => box.title === 'Source box')!;
+  const card = page.locator(`[data-box-id="${source.id}"]`);
+  await card.getByRole('button', { name: source.title, exact: true }).click();
+  const port = card.getByLabel(`Drag to connect from ${source.title}`, { exact: true });
+  await port.hover();
+  await page.mouse.down();
+  try {
+    const bounds = (await port.boundingBox())!;
+    await page.mouse.move(bounds.x + 40, bounds.y + 15);
+    const preview = page.locator('.board__connector-preview');
+    await expect(preview).toBeVisible();
+    const removed = await page.request.post(`${path}/changes`, { data: {
+      baseRevisionId: before.revisionId,
+      requestId: 'delete-source-mid-gesture',
+      operations: [{ op: 'delete_box', boxId: source.id }],
+    } });
+    expect(removed.ok()).toBe(true);
+    await expect(card).not.toBeVisible();
+    await page.mouse.move(20, 40);
+    await expect(preview).toBeHidden();
+    const result = await page.request.get(path).then(response => response.json()) as WorkingStory;
+    expect(result.snapshot.connectors).toEqual({});
+  } finally {
+    if (!page.isClosed()) await page.mouse.up();
+  }
+});

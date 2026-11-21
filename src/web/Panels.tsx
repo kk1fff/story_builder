@@ -1,5 +1,5 @@
 import { useLayoutEffect, useRef, useState, type CSSProperties } from 'react';
-import type { AgentPolicy, Connector, Review, StorySnapshot, Version } from '../shared/story.js';
+import { getBoxSize, type AgentPolicy, type Connector, type Review, type StorySnapshot, type Version } from '../shared/story.js';
 import type { Difference, History } from './api.js';
 import { locationName, titleCase } from './components.js';
 
@@ -128,7 +128,17 @@ export function HistoryPanel({ history, currentBranch, viewed, difference, busy,
       <p className="muted">{difference.from.name} → {difference.to.name}</p>
       {difference.boxes.added.map(box => <Change key={box.id} name={box.title} kind="Added" jump={() => onChange(box.id, difference.to)} />)}
       {difference.boxes.removed.map(box => <Change key={box.id} name={box.title} kind="Removed" jump={() => onChange(box.id, difference.from)} />)}
-      {difference.boxes.changed.map(({ after, fields }) => <Change key={after.id} name={after.title} kind={fields.every(field => ['parentId', 'x', 'y'].includes(field)) ? 'Moved' : 'Edited'} jump={() => onChange(after.id, difference.to)} />)}
+      {difference.boxes.changed.map(({ before, after, fields }) => {
+        const dimensions = ['width', 'minHeight'];
+        const kind = fields.every(field => dimensions.includes(field)) ? 'Resized'
+          : fields.every(field => ['parentId', 'x', 'y'].includes(field)) ? 'Moved' : 'Edited';
+        const previousSize = getBoxSize(before);
+        const nextSize = getBoxSize(after);
+        return <Change key={after.id} name={after.title} kind={kind} jump={() => onChange(after.id, difference.to)}
+          detail={fields.some(field => dimensions.includes(field))
+            ? `${previousSize.width} × ${previousSize.minHeight} → ${nextSize.width} × ${nextSize.minHeight} px`
+            : undefined} />;
+      })}
       {([
         ['Added', difference.connectors.added, difference.after, difference.to],
         ['Removed', difference.connectors.removed, difference.before, difference.from],
@@ -191,6 +201,9 @@ function VersionGraph({ history, viewed, onPick }: { history: History; viewed: V
   </div>;
 }
 
-function Change({ name, kind, jump }: { name: string; kind: string; jump: () => void }) {
-  return <div className="panel-item inline-between"><span className="badge">{kind}</span><button type="button" className="text-link" onClick={jump}>{name}</button></div>;
+function Change({ name, kind, jump, detail }: { name: string; kind: string; jump: () => void; detail?: string }) {
+  return <div className="panel-item">
+    <div className="inline-between"><span className="badge">{kind}</span><button type="button" className="text-link" onClick={jump}>{name}</button></div>
+    {detail && <small className="muted" aria-label={`Width and minimum height. ${detail}`}>{detail}</small>}
+  </div>;
 }

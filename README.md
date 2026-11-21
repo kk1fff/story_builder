@@ -46,6 +46,8 @@ A new project opens on an empty canvas. The user can add any kind of box and use
 
 Every box can open to show text, a nested canvas, or both. Each block has one location and a stable ID. Moving a block changes its path and keeps its links and annotations attached.
 
+Select a box to find its resize grip and connection controls. Drag the lower-right corner to resize, or enter dimensions in the box panel. Draw a connection from the right-edge handle to a visible destination, then choose the relationship. Use **Connect** on the box to pick a destination inside a closed box or to connect by keyboard or touch.
+
 Connectors have a direction and a label, such as **motivates**, **supports**, **causes**, **solves**, or **answers**. Reverse wording like **caused by** describes the same connector. Links can reach blocks at any depth. They appear solid when both endpoints are visible and dashed when an endpoint is represented by a closed ancestor. Inspecting a dashed link shows the actual endpoints and lets the user jump to them. The connection picker keeps the source selected while the user browses from the main canvas to the destination.
 
 A Question can designate one box as its **Derived result** in each version. The marked box holds the written answer. The human or agent can write in it. The human can request a targeted revision or regeneration through an annotation.

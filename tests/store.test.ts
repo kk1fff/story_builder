@@ -2,7 +2,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { inspectDeletion, type Actor, type Operation } from "../src/shared/story.js";
+import { getBoxSize, inspectDeletion, type Actor, type Operation } from "../src/shared/story.js";
 import { StoryStore } from "../src/server/story-store.js";
 
 const addBox = (id: string, parentId: string | null = null, type: "question" | "decision" | "event" = "event") =>
@@ -13,6 +13,8 @@ const addLink = (id: string, sourceId: string, targetId: string) => ({
   connector: { id, sourceId, targetId, label: "supports", reverseLabel: "supported by" },
 }) satisfies Operation;
 const deleteBox = (boxId: string) => ({ op: "delete_box", boxId }) satisfies Operation;
+const resizeBox = (boxId: string, width: number, minHeight: number) =>
+  ({ op: "resize_box", boxId, width, minHeight }) satisfies Operation;
 
 describe("StoryStore", () => {
   let now: number;
@@ -192,6 +194,57 @@ describe("StoryStore", () => {
       .toThrow(expect.objectContaining({ code: "conflict" }));
     const removed = apply([deleteBox("a")], head.revisionId);
     expect(() => apply([addBox("a")], removed.revisionId))
+      .toThrow(expect.objectContaining({ code: "conflict" }));
+  });
+
+  it("normalizes legacy size defaults for no-op changes and History comparisons", () => {
+    const explicit = addBox("explicit");
+    const base = apply([
+      addBox("legacy"), { ...explicit, box: { ...explicit.box, width: 224, minHeight: 100 } },
+    ], initialRevisionId);
+    const before = store.saveVersion({ projectId, branchId })!;
+    expect(base.snapshot.boxes.legacy.width).toBeUndefined();
+    expect(getBoxSize(base.snapshot.boxes.legacy)).toEqual({ width: 224, minHeight: 100 });
+    const noop = apply([resizeBox("legacy", 224, 100)], base.revisionId);
+    expect(noop.revisionId).toBe(base.revisionId);
+    expect(store.saveVersion({ projectId, branchId })).toBeNull();
+
+    const resized = apply([resizeBox("explicit", 390, 320)], base.revisionId);
+    const sized = store.saveVersion({ projectId, branchId })!;
+    expect(store.compareVersions({ projectId, fromVersionId: before.id, toVersionId: sized.id }).boxes.changed)
+      .toEqual([expect.objectContaining({ fields: ["width", "minHeight"] })]);
+    const restored = apply([resizeBox("explicit", 224, 100)], resized.revisionId);
+    const after = store.saveVersion({ projectId, branchId })!;
+    expect(restored.snapshot.boxes.explicit.width).toBeUndefined();
+    expect(store.compareVersions({ projectId, fromVersionId: before.id, toVersionId: after.id }).boxes.changed)
+      .toEqual([]);
+  });
+
+  it("enforces resize bounds and the current agent lock", () => {
+    const base = apply([addBox("finding")], initialRevisionId);
+    expect(() => apply([resizeBox("finding", 179, 100)], base.revisionId))
+      .toThrow(expect.objectContaining({ code: "invalid" }));
+    expect(() => apply([resizeBox("finding", 600, 481)], base.revisionId))
+      .toThrow(expect.objectContaining({ code: "invalid" }));
+    store.setAgentPolicy(projectId, { mode: "add_only", boxIds: [] });
+    expect(() => apply([resizeBox("finding", 600, 480)], base.revisionId, "agent"))
+      .toThrow(expect.objectContaining({ code: "locked" }));
+    store.setAgentPolicy(projectId, { mode: "selected", boxIds: ["finding"] });
+    const resized = apply([resizeBox("finding", 600, 480)], base.revisionId, "agent");
+    expect(getBoxSize(resized.snapshot.boxes.finding)).toEqual({ width: 600, minHeight: 480 });
+  });
+
+  it("merges a resize with independent edits and rejects concurrent sizes or reparenting", () => {
+    const base = apply([addBox("finding"), addBox("parent")], initialRevisionId);
+    const moved = apply([
+      editTitle("finding", "Renamed"), { op: "move_box", boxId: "finding", parentId: null, x: 90, y: 80 },
+    ], base.revisionId);
+    const resized = apply([resizeBox("finding", 420, 200)], base.revisionId, "agent");
+    expect(resized.snapshot.boxes.finding).toMatchObject({ x: 90, y: 80, title: "Renamed", width: 420, minHeight: 200 });
+    expect(() => apply([resizeBox("finding", 510, 150)], moved.revisionId))
+      .toThrow(expect.objectContaining({ code: "conflict" }));
+    apply([{ op: "move_box", boxId: "finding", parentId: "parent", x: 20, y: 10 }], resized.revisionId);
+    expect(() => apply([resizeBox("finding", 510, 150)], resized.revisionId))
       .toThrow(expect.objectContaining({ code: "conflict" }));
   });
 });

@@ -278,6 +278,10 @@ button.primary:hover:not(:disabled) {
 .panel-body, .form-stack { gap: 15px; }
 .field { gap: 5px; }
 .field > label, .field > span { font-size: 12px; }
+.box-size-form { display: grid; gap: 8px; }
+.box-size-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.box-size-fields input { font-variant-numeric: tabular-nums; }
+.box-size-form > button { justify-self: start; }
 .panel-actions { margin-top: 4px; }
 .context-panel :is(ul, ol) { margin: 0; padding-inline-start: 18px; }
 .context-panel li + li { margin-top: 7px; }
@@ -477,15 +481,94 @@ dialog p, .dialog p { margin-bottom: 10px; }
 .board .react-flow__controls-button:last-child { border-bottom: 0; }
 .board .react-flow__controls-button:hover { background: var(--sheet); }
 .board .react-flow__controls-button:focus-visible { outline-offset: -3px; }
-.board .react-flow__node .react-flow__handle {
+.board .react-flow__node .react-flow__handle:not(.story-card__connector) {
   min-width: 6px;
   min-height: 6px;
   width: 6px;
   height: 6px;
-  border: 1px solid var(--surface);
-  background: var(--wire-dashed);
+  opacity: 0;
   pointer-events: none;
 }
+
+.board .react-flow__node .story-card__connector {
+  z-index: 3;
+  width: 26px;
+  height: 26px;
+  min-width: 0;
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--accent);
+  cursor: crosshair;
+  pointer-events: auto;
+  touch-action: none;
+}
+
+.story-card__connector::before {
+  position: absolute;
+  inset: 3px;
+  border: 1px solid currentColor;
+  border-radius: 50%;
+  background: var(--surface);
+  box-shadow: var(--shadow-card);
+  content: "";
+}
+
+.story-card__connector::after {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 7px;
+  height: 7px;
+  border: solid currentColor;
+  border-width: 1.5px 1.5px 0 0;
+  transform: translate(-65%, -50%) rotate(45deg);
+  content: "";
+}
+
+.story-card__connector:hover::before,
+.story-card__connector.connectingfrom::before { background: var(--accent); }
+.story-card__connector:hover::after,
+.story-card__connector.connectingfrom::after { color: var(--on-accent); }
+
+.board .react-flow__node .story-card__resize {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  z-index: 3;
+  width: 24px;
+  height: 24px;
+  min-width: 0;
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--accent);
+  cursor: nwse-resize;
+  transform: translate(50%, 50%);
+  touch-action: none;
+}
+
+.story-card__resize::before,
+.story-card__resize::after {
+  position: absolute;
+  right: 7px;
+  bottom: 7px;
+  width: 11px;
+  height: 11px;
+  border: solid currentColor;
+  border-width: 0 2px 2px 0;
+  border-bottom-right-radius: 2px;
+  content: "";
+}
+
+.story-card__resize::after { width: 5px; height: 5px; }
+.story-card__resize:hover { background: var(--accent-soft); }
+.story-card:has(.story-card__resize) .story-card__footer { padding-inline-end: 8px; }
+.board__connector-preview { position: absolute; z-index: 4; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+.board .react-flow__connection-path { stroke: var(--accent); stroke-width: 2.2px; }
 
 .board__empty {
   position: absolute;
@@ -553,7 +636,8 @@ dialog p, .dialog p { margin-bottom: 10px; }
 
 .story-card {
   position: relative;
-  display: grid;
+  display: flex;
+  flex-direction: column;
   gap: 6px;
   width: 100%;
   min-width: 0;
@@ -578,6 +662,9 @@ dialog p, .dialog p { margin-bottom: 10px; }
   background: color-mix(in srgb, var(--surface), var(--sheet) 48%);
 }
 
+.story-card--connect-eligible { outline: 1px dashed var(--accent); outline-offset: 3px; }
+.story-card--connect-target { outline: 2px solid var(--accent); outline-offset: 3px; background: var(--accent-soft); }
+
 .story-card__top, .story-card__footer {
   display: flex;
   flex-wrap: wrap;
@@ -586,15 +673,15 @@ dialog p, .dialog p { margin-bottom: 10px; }
   min-width: 0;
 }
 
-.story-card__top { align-self: start; }
 .story-card__footer {
   justify-content: space-between;
-  align-self: end;
+  margin-block-start: auto;
   min-height: 23px;
   color: var(--muted);
   font-size: 11px;
 }
 
+.story-card__footer-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; margin-inline-start: auto; }
 .story-card h3 { min-width: 0; }
 .story-card__title {
   display: -webkit-box;
@@ -626,6 +713,17 @@ dialog p, .dialog p { margin-bottom: 10px; }
   color: var(--accent);
   font-size: 11px;
 }
+
+.story-card__connect {
+  min-height: 24px;
+  padding: 1px 6px;
+  border-color: color-mix(in srgb, var(--accent), var(--border) 55%);
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: 11px;
+}
+
+.story-card__connect:hover:not(:disabled) { border-color: var(--accent); background: var(--accent-soft); }
 
 .story-card__path {
   display: -webkit-box;
@@ -737,7 +835,7 @@ dialog p, .dialog p { margin-bottom: 10px; }
   .inset-header { margin: 10px 10px 0; }
   .board--nested { margin-inline: 10px; }
   button { min-height: 44px; }
-  .story-card__title, .story-card__open { min-height: 44px; }
+  .story-card__title, .story-card__open, .story-card__connect { min-height: 44px; }
 }
 
 @media (max-width: 599px) {
@@ -745,7 +843,16 @@ dialog p, .dialog p { margin-bottom: 10px; }
   .board__flow, .board__legend { display: none; }
   .board__list { display: grid; gap: 10px; padding: 12px; }
   .story-card { max-width: none; }
+  .story-card__footer-actions { gap: 7px; }
+  .story-card__connect { padding-inline: 11px; font-size: 12px; }
   .story-card__title { -webkit-line-clamp: unset; }
   .board__relations { margin-top: 4px; }
   .board__empty h2 { font-size: 21px; }
+}
+
+@media (pointer: coarse) {
+  .board .react-flow__node :is(.story-card__connector, .story-card__resize) { width: 44px; height: 44px; }
+  .story-card__connector::before { inset: 11px; }
+  .story-card__resize::before, .story-card__resize::after { right: 17px; bottom: 17px; }
+  .story-card:has(.story-card__resize) .story-card__footer { padding-inline-end: 18px; }
 }

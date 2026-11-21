@@ -1,15 +1,16 @@
 import { lazy, Suspense, useEffect, useRef, useState } from 'react';
-import type { Box, Connector, DeleteImpact, Operation, Project, Review, StorySnapshot, Version, WorkingStory } from '../shared/story.js';
+import { getBoxSize, type Box, type Connector, type DeleteImpact, type Operation, type Project, type Review, type StorySnapshot, type Version, type WorkingStory } from '../shared/story.js';
 import { AgentPanel, BrowsePanel, HistoryPanel, ReviewPanel, type DraftNote } from './Panels.js';
-import { BoxForm, BoxPicker, ConnectorForm, Dialog, WrittenText, boxPath, locationName, titleCase } from './components.js';
+import { BoxForm, BoxPicker, BoxSizeForm, ConnectorForm, Dialog, WrittenText, boxPath, locationName, titleCase } from './components.js';
 import { branchPath, projectPath, request, RequestError, type AppliedEdit, type Difference, type History } from './api.js';
+import { findBoxPosition } from './graph.js';
 
 const Board = lazy(() => import('./Canvas.js').then(module => ({ default: module.Board })));
 
 type Panel = 'inspect' | 'browse' | 'review' | 'history' | 'agent' | 'connections';
 type Modal =
   | { kind: 'add'; parentId: string | null; id: string; base: string; position: { x: number; y: number } }
-  | { kind: 'edit' | 'connect' | 'move' | 'result'; box: Box; base: string; newConnectorId: string }
+  | { kind: 'edit' | 'connect' | 'move' | 'result'; box: Box; base: string; newConnectorId: string; targetId?: string }
   | { kind: 'annotate'; ids: string[] }
   | { kind: 'delete'; box: Box; impact: DeleteImpact & { revisionId: string } }
   | { kind: 'connector'; connector: Connector; base: string };
@@ -99,6 +100,7 @@ function Workspace({ initial, leave, remember }: { initial: WorkingStory; leave:
   const [reviews, setReviews] = useState<Review[]>([]);
   const [drafts, setDrafts] = useState<DraftNote[]>([]);
   const [parentId, setParent] = useState<string | null>(null);
+  const [revealBoxId, setRevealBoxId] = useState<string>();
   const [selected, setSelected] = useState<string[]>([]);
   const [connectorIds, setConnectorIds] = useState<string[]>([]);
   const [panel, setPanel] = useState<Panel | null>(null);
@@ -112,6 +114,8 @@ function Workspace({ initial, leave, remember }: { initial: WorkingStory; leave:
   const generation = useRef(0);
   const moves = useRef(new Map<string, { revisionId: string; parentId: string | null }>());
   const receipts = useRef(new Map<string, string>());
+  const canvas = useRef<HTMLElement>(null);
+  const inspector = useRef<HTMLElement>(null);
 
   const { project, branch } = live;
   const current = historical?.story ?? live;
@@ -216,12 +220,34 @@ function Workspace({ initial, leave, remember }: { initial: WorkingStory; leave:
     selectBox(id, false);
   }
 
-  function begin(kind: 'edit' | 'connect' | 'move' | 'result', box: Box) {
+  function begin(kind: 'edit' | 'connect' | 'move' | 'result', box: Box, targetId?: string, revisionId = live.revisionId) {
     setValue(kind === 'move' ? box.parentId : kind === 'result' ? box.derivedResultId : null);
-    setModal({ kind, box, base: live.revisionId, newConnectorId: newId() });
+    setModal({ kind, box, base: revisionId, newConnectorId: newId(), targetId });
   }
 
-  const add = () => setModal({ kind: 'add', parentId: visibleParentId, id: newId(), base: live.revisionId, position: positioned(visibleParentId) });
+  function connectBox(sourceId: string, targetId?: string, revisionId?: string) {
+    if (readonly || !Object.hasOwn(boxes, sourceId) || (targetId && !Object.hasOwn(boxes, targetId))) return;
+    begin('connect', boxes[sourceId], targetId, revisionId);
+  }
+
+  async function resizeBox(boxId: string, size: ReturnType<typeof getBoxSize>, revisionId: string) {
+    if (readonly) return false;
+    let saved = false;
+    await perform(async () => {
+      await write([{ op: 'resize_box', boxId, ...size }], revisionId);
+      saved = true;
+    });
+    return saved;
+  }
+
+  function focusSize(boxId: string) {
+    selectBox(boxId, false);
+    requestAnimationFrame(() => inspector.current?.querySelector<HTMLInputElement>('[data-box-size-width]')?.focus());
+  }
+
+  const add = () => setModal({
+    kind: 'add', parentId: visibleParentId, id: newId(), base: live.revisionId, position: positioned(visibleParentId),
+  });
   const annotate = () => { setNoteText(''); setModal({ kind: 'annotate', ids: chosen }); };
   async function copy(text: string) {
     try { await navigator.clipboard.writeText(text); setMessage('Copied to clipboard'); }
@@ -253,11 +279,12 @@ function Workspace({ initial, leave, remember }: { initial: WorkingStory; leave:
     });
   }
 
-  function positioned(parent: string | null) {
-    const occupied = new Set(Object.values(boxes).filter(box => box.parentId === parent).map(box => `${Math.round(box.x / 280)},${Math.round(box.y / 170)}`));
-    let index = 0;
-    while (occupied.has(`${index % 3},${Math.floor(index / 3)}`)) index++;
-    return { x: (index % 3) * 280, y: Math.floor(index / 3) * 170 };
+  function positioned(parentId: string | null, moving?: Box) {
+    const heights = new Map<string, number>();
+    for (const card of canvas.current?.querySelectorAll<HTMLElement>('[data-box-id]') ?? []) {
+      if (card.dataset.boxId && card.offsetHeight) heights.set(card.dataset.boxId, card.offsetHeight);
+    }
+    return findBoxPosition(boxes, parentId, { moving, measuredHeights: heights });
   }
 
   const changeKinds: Record<string, 'added' | 'removed' | 'changed' | 'moved'> = {};
@@ -287,6 +314,8 @@ function Workspace({ initial, leave, remember }: { initial: WorkingStory; leave:
       <span className="badge">{titleCase(single.type)}</span>
       {question && <div className="panel-item"><span className="badge">Derived result</span> <button type="button" className="text-link" onClick={() => jump(question.id)}>{question.title}</button></div>}
       {single.body && <WrittenText body={single.body} jump={jump} />}
+      {!readonly && <BoxSizeForm key={single.id} box={single} revisionId={live.revisionId} busy={busy}
+        save={(size, revisionId) => resizeBox(single.id, size, revisionId)} />}
       <div className="panel-actions">
         <button type="button" onClick={() => openBox(single.id)}>Open box</button>
         {single.derivedResultId && <button type="button" onClick={() => jump(single.derivedResultId!)}>Open result</button>}
@@ -393,7 +422,7 @@ function Workspace({ initial, leave, remember }: { initial: WorkingStory; leave:
     </header>
 
     <div className="workspace">
-      <section className="canvas-column" aria-label="Story canvas">
+      <section className="canvas-column" aria-label="Story canvas" ref={canvas}>
         <div className="canvas-toolbar">
           <div className="panel-actions">
             {!readonly && <button type="button" className="button-primary" onClick={add}>Add box</button>}
@@ -412,6 +441,8 @@ function Workspace({ initial, leave, remember }: { initial: WorkingStory; leave:
           <button type="button" onClick={() => { setParent(boxes[visibleParentId].parentId); selectBox(visibleParentId, false); }}>Close box</button>
         </div>}
         <Suspense fallback={<p className="muted" role="status">Loading canvas…</p>}><Board snapshot={current.snapshot} activeParentId={visibleParentId} selectedIds={chosen} readOnly={readonly}
+          revisionId={live.revisionId} revealBoxId={revealBoxId} onRevealBox={id => setRevealBoxId(current => current === id ? undefined : current)}
+          connectBox={connectBox} resizeBox={resizeBox} focusSize={focusSize}
           selectBox={selectBox} openBox={openBox} beginMoveBox={boxId => {
             const box = live.snapshot.boxes[boxId];
             if (box) moves.current.set(boxId, { revisionId: live.revisionId, parentId: box.parentId });
@@ -422,7 +453,7 @@ function Workspace({ initial, leave, remember }: { initial: WorkingStory; leave:
           }} inspectConnector={ids => { setConnectorIds(ids); setPanel('connections'); }}
           addBox={readonly ? undefined : add} changeKinds={changeKinds} connectorChangeKinds={connectorChangeKinds} nestedChangeCounts={nestedChangeCounts} /></Suspense>
       </section>
-      {panelTitle && <aside className="context-panel" aria-label={panelTitle}>
+      {panelTitle && <aside className="context-panel" aria-label={panelTitle} ref={inspector}>
         <div className="panel-header"><h2>{panelTitle}</h2><button type="button" aria-label="Close panel" className="button-quiet" onClick={() => setPanel(null)}>×</button></div>
         <div className="panel-body">{content}</div>
       </aside>}
@@ -441,14 +472,14 @@ function Workspace({ initial, leave, remember }: { initial: WorkingStory; leave:
       </div>}
       {modal.kind === 'add' && <BoxForm busy={busy} submitLabel="Add box" onSave={fields => perform(async () => {
         await write([{ op: 'add_box', box: { id: modal.id, parentId: modal.parentId, ...fields, ...modal.position } }], modal.base);
-        setModal(null); selectBox(modal.id, false);
+        setModal(null); selectBox(modal.id, false); setRevealBoxId(modal.id);
       })} />}
       {modal.kind === 'edit' && <BoxForm busy={busy} box={modal.box} submitLabel="Save box" onSave={fields => perform(async () => {
         const patch = Object.fromEntries(Object.entries(fields).filter(([key, value]) => value !== modal.box[key as keyof Box]));
         if (Object.keys(patch).length) await write([{ op: 'update_box', boxId: modal.box.id, patch }], modal.base);
         setModal(null);
       })} />}
-      {modal.kind === 'connect' && <ConnectorForm boxes={boxes} source={modal.box} busy={busy} onSave={(targetId, label, reverseLabel) => void perform(async () => {
+      {modal.kind === 'connect' && <ConnectorForm boxes={boxes} source={modal.box} initialTargetId={modal.targetId} busy={busy} onSave={(targetId, label, reverseLabel) => void perform(async () => {
         await write([{ op: 'add_connector', connector: { id: modal.newConnectorId, sourceId: modal.box.id, targetId, label, reverseLabel } }], modal.base);
         setModal(null);
       })} />}
@@ -457,7 +488,7 @@ function Workspace({ initial, leave, remember }: { initial: WorkingStory; leave:
         {modal.kind === 'result' && <button type="button" aria-pressed={value === null} onClick={() => setValue(null)}>Clear result</button>}
         <button type="button" className="button-primary" disabled={busy || value === modal.box.id} onClick={() => void perform(async () => {
           if (modal.kind === 'move') {
-            await write([{ op: 'move_box', boxId: modal.box.id, parentId: value, ...positioned(value) }], modal.base);
+            await write([{ op: 'move_box', boxId: modal.box.id, parentId: value, ...positioned(value, modal.box) }], modal.base);
             setParent(value);
           } else {
             await write([{ op: 'set_derived_result', questionId: modal.box.id, resultId: value }], modal.base);

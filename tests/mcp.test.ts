@@ -55,6 +55,20 @@ describe('Streamable HTTP MCP endpoint', () => {
       expect(applied.structuredContent).toMatchObject({ snapshot: { boxes: { question: { id: 'question' } } } });
       const retry = await client.callTool({ name: 'apply_changes', arguments: change });
       expect(retry.structuredContent).toEqual(applied.structuredContent);
+
+      const resized = {
+        session_id,
+        base_revision_id: (applied.structuredContent as { revisionId: string }).revisionId,
+        request_id: 'resize-question',
+        operations: [{ op: 'resize_box', boxId: 'question', width: 360, minHeight: 180 }],
+      };
+      const resizeDenied = await client.callTool({ name: 'apply_changes', arguments: resized });
+      expect(resizeDenied.structuredContent).toMatchObject({ code: 'locked' });
+      store.setAgentPolicy(created.project.id, { mode: 'selected', boxIds: ['question'] });
+      const resizeApplied = await client.callTool({ name: 'apply_changes', arguments: resized });
+      expect(resizeApplied.isError).not.toBe(true);
+      const canvas = await client.callTool({ name: 'read_canvas', arguments: { session_id } });
+      expect(canvas.structuredContent).toMatchObject({ boxes: [{ id: 'question', x: 0, y: 0, width: 360, minHeight: 180 }] });
     } finally {
       await client.close();
     }
