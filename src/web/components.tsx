@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import Markdown, { defaultUrlTransform } from 'react-markdown';
-import { boxTypes, connectorPresets, type Box, type StorySnapshot } from '../shared/story.js';
+import { boxSizeLimits, boxTypes, connectorPresets, getBoxSize, type Box, type StorySnapshot } from '../shared/story.js';
 
 export const titleCase = (value: string) => value.charAt(0).toUpperCase() + value.slice(1);
 
@@ -76,10 +76,48 @@ export function BoxForm({ box, onSave, submitLabel, busy }: {
   </form>;
 }
 
-export function ConnectorForm({ boxes, source, busy, onSave }: {
-  boxes: StorySnapshot['boxes']; source: Box; busy: boolean; onSave: (targetId: string, label: string, reverseLabel: string | null) => void;
+export function BoxSizeForm({ box, revisionId, busy, save }: {
+  box: Box; revisionId: string; busy: boolean;
+  save: (size: ReturnType<typeof getBoxSize>, revisionId: string) => Promise<boolean>;
 }) {
-  const [target, setTarget] = useState<string | null>(null);
+  const [draft, setDraft] = useState<{ width: string; minHeight: string; revisionId: string | null }>();
+  const [saveFailed, setSaveFailed] = useState(false);
+  const current = getBoxSize(box);
+  const shown = draft ?? { width: String(current.width), minHeight: String(current.minHeight), revisionId: null };
+  const submitted = { width: Number(shown.width), minHeight: Number(shown.minHeight) };
+  const unchanged = submitted.width === current.width && submitted.minHeight === current.minHeight;
+  function change(field: 'width' | 'minHeight', value: string) {
+    setDraft({ ...shown, [field]: value, revisionId: shown.revisionId ?? revisionId });
+  }
+  return <form className="box-size-form form-stack" onSubmit={event => {
+    event.preventDefault();
+    if (unchanged || busy) return;
+    void save(submitted, shown.revisionId ?? revisionId).then(saved => {
+      setSaveFailed(!saved);
+      if (saved) setDraft(latest => latest === draft ? undefined : latest);
+    });
+  }}>
+    <div className="box-size-fields">
+      <label className="field">Width<input
+        data-box-size-width
+        type="number" required step="any" min={boxSizeLimits.minWidth} max={boxSizeLimits.maxWidth} disabled={busy}
+        value={shown.width} onChange={event => change('width', event.target.value)}
+      /></label>
+      <label className="field">Minimum height<input
+        type="number" required step="any" min={boxSizeLimits.minHeight} max={boxSizeLimits.maxHeight} disabled={busy}
+        value={shown.minHeight} onChange={event => change('minHeight', event.target.value)}
+      /></label>
+    </div>
+    <button type="submit" disabled={busy || unchanged}>Apply size</button>
+    {saveFailed && draft && <button type="button" disabled={busy} onClick={() => { setDraft(undefined); setSaveFailed(false); }}>Load current size</button>}
+  </form>;
+}
+
+export function ConnectorForm({ boxes, source, initialTargetId, busy, onSave }: {
+  boxes: StorySnapshot['boxes']; source: Box; initialTargetId?: string; busy: boolean;
+  onSave: (targetId: string, label: string, reverseLabel: string | null) => void;
+}) {
+  const [target, setTarget] = useState<string | null>(initialTargetId ?? null);
   const [label, setLabel] = useState('supports');
   return <form className="form-stack" onSubmit={event => {
     event.preventDefault();
@@ -87,7 +125,7 @@ export function ConnectorForm({ boxes, source, busy, onSave }: {
   }}>
     <p className="muted">From <strong>{locationName(boxes, source.id)}</strong></p>
     <BoxPicker boxes={boxes} value={target} onPick={setTarget} />
-    <label className="field">Relationship<input list="relationship-labels" value={label} onChange={event => setLabel(event.target.value)} required maxLength={100} /></label>
+    <label className="field">Relationship<input data-initial-focus={initialTargetId ? '' : undefined} list="relationship-labels" value={label} onChange={event => setLabel(event.target.value)} required maxLength={100} /></label>
     <datalist id="relationship-labels">{connectorPresets.map(value => <option key={value.label} value={value.label} />)}</datalist>
     {target && <p className="muted">{source.title} → {label} → {locationName(boxes, target)}</p>}
     <button className="button-primary" disabled={!target || target === source.id || !label.trim() || busy}>Connect</button>

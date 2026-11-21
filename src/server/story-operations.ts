@@ -1,5 +1,7 @@
 import { isDeepStrictEqual } from "node:util";
 import {
+  defaultBoxSize,
+  getBoxSize,
   inspectDeletion,
   type Actor,
   type AgentPolicy,
@@ -77,6 +79,8 @@ function affectedBoxes(snapshot: StorySnapshot, operation: Operation): (string |
       if (box.parentId === operation.parentId) return [box.id];
       return [...inspectDeletion(snapshot, box.id).boxIds, box.parentId, operation.parentId];
     }
+    case "resize_box":
+      return [boxAt(snapshot, operation.boxId).id];
     case "delete_box": {
       const { boxIds, connectorIds, questionIds } = inspectDeletion(snapshot, operation.boxId);
       return [...boxIds, ...endpointIds(snapshot, connectorIds), ...questionIds];
@@ -128,6 +132,16 @@ function apply(snapshot: StorySnapshot, operation: Operation) {
       const box = boxAt(snapshot, boxId);
       checkParent(snapshot, boxId, parentId);
       snapshot.boxes[boxId] = { ...box, parentId, x, y };
+      break;
+    }
+    case "resize_box": {
+      const { boxId, width, minHeight } = operation;
+      const box = boxAt(snapshot, boxId);
+      if (isDeepStrictEqual(getBoxSize(box), { width, minHeight })) break;
+      const resized: Box = { ...box, width, minHeight };
+      if (width === defaultBoxSize.width) delete resized.width;
+      if (minHeight === defaultBoxSize.minHeight) delete resized.minHeight;
+      snapshot.boxes[boxId] = resized;
       break;
     }
     case "delete_box": {
@@ -204,6 +218,10 @@ function footprint(snapshot: StorySnapshot, operation: Operation): unknown {
     }
     case "move_box":
       return [selectFields(own(snapshot.boxes, operation.boxId), ["parentId", "x", "y"]), exists(operation.parentId)];
+    case "resize_box": {
+      const box = own(snapshot.boxes, operation.boxId);
+      return box ? { parentId: box.parentId, ...getBoxSize(box) } : null;
+    }
     case "delete_box":
       return deleteState(snapshot, operation.boxId);
     case "add_connector":
@@ -260,6 +278,7 @@ export function applyOperations(
 export function compareEntities<T extends { id: string }>(
   before: Record<string, T>,
   after: Record<string, T>,
+  normalize: (entity: T) => T = (entity) => entity,
 ): EntityDiff<T> {
   const diff: EntityDiff<T> = { added: [], removed: [], changed: [] };
   const ids = new Set([...Object.keys(before), ...Object.keys(after)]);
@@ -271,10 +290,16 @@ export function compareEntities<T extends { id: string }>(
     } else if (previous && !latest) {
       diff.removed.push(previous);
     } else if (previous && latest) {
-      const keys = new Set([...Object.keys(previous), ...Object.keys(latest)]) as Set<keyof T>;
-      const fields = [...keys].filter((key) => !isDeepStrictEqual(previous[key], latest[key])).map(String);
+      const normalizedBefore = normalize(previous);
+      const normalizedAfter = normalize(latest);
+      const keys = new Set([...Object.keys(normalizedBefore), ...Object.keys(normalizedAfter)]) as Set<keyof T>;
+      const fields = [...keys].filter((key) => !isDeepStrictEqual(normalizedBefore[key], normalizedAfter[key])).map(String);
       if (fields.length) diff.changed.push({ before: previous, after: latest, fields });
     }
   }
   return diff;
+}
+
+export function compareBoxes(before: StorySnapshot["boxes"], after: StorySnapshot["boxes"]) {
+  return compareEntities(before, after, (box) => ({ ...box, ...getBoxSize(box) }));
 }

@@ -1,4 +1,4 @@
-import type { Box, Connector, StorySnapshot } from "../shared/story.js";
+import { defaultBoxSize, getBoxSize, type Box, type Connector, type StorySnapshot } from "../shared/story.js";
 
 export const boxTypeLabels = {
   problem: "Problem",
@@ -22,6 +22,35 @@ export function boxPath(snapshot: StorySnapshot, boxId: string): Box[] {
     id = box.parentId;
   }
   return path.reverse();
+}
+
+const placementGap = 56;
+
+export function findBoxPosition(
+  boxes: StorySnapshot["boxes"],
+  parentId: string | null,
+  options: { moving?: Box; measuredHeights?: ReadonlyMap<string, number> } = {},
+) {
+  const { moving, measuredHeights } = options;
+  const size = moving ? getBoxSize(moving) : defaultBoxSize;
+  const height = Math.max(size.minHeight, moving ? measuredHeights?.get(moving.id) ?? 0 : 0);
+  const occupied = Object.values(boxes).filter((box) => box.parentId === parentId && box.id !== moving?.id)
+    .map((box) => {
+      const { width, minHeight } = getBoxSize(box);
+      return {
+        x: box.x, y: box.y, width,
+        height: Math.max(minHeight, measuredHeights?.get(box.id) ?? 0),
+      };
+    });
+  for (let index = 0; ; index++) {
+    const x = (index % 3) * (defaultBoxSize.width + placementGap);
+    const y = Math.floor(index / 3) * (defaultBoxSize.minHeight + 70);
+    const overlaps = occupied.some((other) => (
+      x < other.x + other.width + placementGap && x + size.width + placementGap > other.x
+      && y < other.y + other.height + placementGap && y + height + placementGap > other.y
+    ));
+    if (!overlaps) return { x, y };
+  }
 }
 
 type VisibleEndpoint = {

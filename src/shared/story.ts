@@ -32,6 +32,12 @@ const bodySchema = z.string().max(100_000);
 const labelSchema = z.string().trim().min(1).max(120);
 const boxTypeSchema = z.enum(boxTypes);
 
+export const defaultBoxSize = { width: 224, minHeight: 100 };
+export const boxSizeLimits = { minWidth: 180, maxWidth: 600, minHeight: 100, maxHeight: 480 };
+
+const widthSchema = z.number().min(boxSizeLimits.minWidth).max(boxSizeLimits.maxWidth);
+const minHeightSchema = z.number().min(boxSizeLimits.minHeight).max(boxSizeLimits.maxHeight);
+
 const newBoxSchema = z.strictObject({
   id: idSchema,
   parentId: idSchema.nullable(),
@@ -40,6 +46,8 @@ const newBoxSchema = z.strictObject({
   body: bodySchema,
   x: z.number(),
   y: z.number(),
+  width: widthSchema.optional(),
+  minHeight: minHeightSchema.optional(),
 });
 
 export const boxSchema = newBoxSchema.extend({ derivedResultId: idSchema.nullable() });
@@ -70,6 +78,12 @@ export const operationSchema = z.discriminatedUnion("op", [
     x: z.number(),
     y: z.number(),
   }),
+  z.strictObject({
+    op: z.literal("resize_box"),
+    boxId: idSchema,
+    width: widthSchema,
+    minHeight: minHeightSchema,
+  }),
   z.strictObject({ op: z.literal("delete_box"), boxId: idSchema }),
   z.strictObject({ op: z.literal("add_connector"), connector: connectorSchema }),
   z.strictObject({
@@ -96,6 +110,10 @@ export type Box = z.infer<typeof boxSchema>;
 export type Connector = z.infer<typeof connectorSchema>;
 export type Operation = z.infer<typeof operationSchema>;
 export type AgentPolicy = z.infer<typeof agentPolicySchema>;
+
+export function getBoxSize(box: Pick<Box, "width" | "minHeight">) {
+  return { width: box.width ?? defaultBoxSize.width, minHeight: box.minHeight ?? defaultBoxSize.minHeight };
+}
 
 export type StorySnapshot = {
   boxes: Record<string, Box>;

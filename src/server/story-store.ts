@@ -18,7 +18,7 @@ import {
   type VersionDiff,
   type WorkingStory,
 } from "../shared/story.js";
-import { applyOperations, compareEntities, StoryError } from "./story-operations.js";
+import { applyOperations, compareBoxes, compareEntities, StoryError } from "./story-operations.js";
 
 export { inspectDeletion } from "../shared/story.js";
 export { StoryError } from "./story-operations.js";
@@ -422,7 +422,7 @@ export class StoryStore {
     return {
       from,
       to,
-      boxes: compareEntities(before.boxes, after.boxes),
+      boxes: compareBoxes(before.boxes, after.boxes),
       connectors: compareEntities(before.connectors, after.connectors),
     };
   }
