@@ -1,0 +1,11 @@
+services:
+  story-builder:
+    build: .
+    ports:
+      - "${STORY_BIND_ADDRESS:-127.0.0.1}:${STORY_PORT:-4310}:4310"
+    environment:
+      STORY_ALLOWED_ORIGINS: ${STORY_ALLOWED_ORIGINS:-}
+    volumes:
+      - story-data:/app/data
+volumes:
+  story-data:

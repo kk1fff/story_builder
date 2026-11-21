@@ -2,6 +2,32 @@
 
 Story Builder is a web canvas for working out an answer to a question. People can build a story by hand or invite an agent to help develop the reasoning, edit the canvas, and write an answer.
 
+## Run locally
+
+Use Node 26 and npm.
+
+```sh
+npm ci
+npm run build
+npm start
+```
+
+Open [the workspace](http://127.0.0.1:4310) to create an empty project. The app stores data in `data/story.sqlite` by default. Set `STORY_DB` to use a different file. The [MCP setup guide](http://127.0.0.1:4310/mcp) describes the tools and how to give an agent a project or review ID.
+
+For a container deployment, run `docker compose up --build`. Compose binds to loopback and uses a named data volume. To host on a trusted internal interface, set `STORY_BIND_ADDRESS` to that interface's IP and `STORY_ALLOWED_ORIGINS` to a comma-separated list of exact web origins, such as `http://story-builder.internal:4310`. The same configured URL serves the web UI and MCP. Keep the data volume when restarting. Check `GET /healthz` to verify the service can access its store.
+
+## Run checks locally
+
+```sh
+npx playwright install --only-shell chromium
+npm run typecheck
+npm run build
+npm test
+npm run test:e2e
+```
+
+Browser checks run in headless Chromium. See [acceptance walkthrough](docs/acceptance.md) for the GCC case and the external agent test.
+
 ## Prototype scope
 
 A new project opens on an empty canvas. The user can add any kind of box and use the editor independently. They can connect an agent later and give it the project ID.
